@@ -1,0 +1,152 @@
+openapi: "3.0.3"
+info:
+  title: DTx Integration API
+  version: "0.1.0"
+
+paths:
+  /pathway-events:
+    post:
+      operationId: submitPathwayEvent
+      security:
+        - ApiKey: []
+      parameters:
+        - $ref: "#/components/parameters/XCorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/fhir+json:
+            schema:
+              $ref: "#/components/schemas/TransactionBundle"
+      responses:
+        "201":
+          description: Accepted
+          content:
+            application/fhir+json:
+              schema:
+                $ref: "#/components/schemas/OperationOutcome"
+        "400":
+          description: |
+            Bad request. The correlation id header is missing or not a valid UUID,
+            the request body is missing or not valid JSON, or the FHIR Bundle
+            failed structural validation. Check the OperationOutcome issues for
+            specifics.
+          content:
+            application/fhir+json:
+              schema:
+                $ref: "#/components/schemas/OperationOutcome"
+              example:
+                resourceType: OperationOutcome
+                issue:
+                  - severity: error
+                    code: value
+                    diagnostics: "Bundle.resourceType must be 'Bundle'"
+                    expression:
+                      - "Bundle.resourceType"
+        "409":
+          $ref: "#/components/responses/ConflictOperationOutcome"
+        "500":
+          description: |
+            Internal server error. An unexpected failure in the processing chain.
+            Retry with exponential backoff.
+          content:
+            application/fhir+json:
+              schema:
+                $ref: "#/components/schemas/OperationOutcome"
+              example:
+                resourceType: OperationOutcome
+                issue:
+                  - severity: error
+                    code: exception
+                    diagnostics: "Internal server error"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: ${lambda_invoke_arn}
+        passthroughBehavior: when_no_match
+
+components:
+  responses:
+    ConflictOperationOutcome:
+      description: Duplicate submission — correlation ID already processed.
+      content:
+        application/fhir+json:
+          schema:
+            $ref: "#/components/schemas/OperationOutcome"
+          example:
+            resourceType: OperationOutcome
+            issue:
+              - severity: information
+                code: duplicate
+                details:
+                  text: "Duplicate submission rejected; original message already processed."
+
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      name: x-api-key
+      in: header
+
+  parameters:
+    XCorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: true
+      description: Client-supplied correlation id used as an idempotency key.
+      schema:
+        type: string
+        format: uuid
+        example: "550e8400-e29b-41d4-a716-446655440000"
+
+  schemas:
+    TransactionBundle:
+      type: object
+      required:
+        - resourceType
+        - type
+        - entry
+      properties:
+        resourceType:
+          type: string
+          enum: [Bundle]
+        type:
+          type: string
+          enum: [transaction]
+        entry:
+          type: array
+          minItems: 1
+          items:
+            type: object
+
+    OperationOutcome:
+      type: object
+      required:
+        - resourceType
+        - issue
+      properties:
+        resourceType:
+          type: string
+          enum: [OperationOutcome]
+        issue:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/OperationOutcomeIssue"
+
+    OperationOutcomeIssue:
+      type: object
+      required:
+        - severity
+        - code
+      properties:
+        severity:
+          type: string
+          enum: [fatal, error, warning, information]
+        code:
+          type: string
+          enum: [required, value, structure, exception, informational]
+        diagnostics:
+          type: string
+        expression:
+          type: array
+          items:
+            type: string
