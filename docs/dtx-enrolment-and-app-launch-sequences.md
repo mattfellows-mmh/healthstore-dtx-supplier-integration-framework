@@ -1,4 +1,4 @@
-## Enrolment (NHS Instigated)
+## Enrolment (NHS Instigated - Individual Patient)
 
 This diagram shows the high level sequence of events and communication involved in enroling a patient on a DTx
 ```mermaid
@@ -9,6 +9,45 @@ This diagram shows the high level sequence of events and communication involved 
     DTx->>NHS: Acknowledge Enrolment and Account Creation (MI)
     NHS->>Patient: Notification of Enrolment
     DTx-->>Patient: Welcome Email / Onboarding Instruction
+```
+
+## Enrolment (NHS Instigated - Bulk Patient - Immediate Account Creation)
+
+This diagram shows the high level sequence of events and communication involved in enroling a patient on a DTx in bulk.  The accounts would be created upon consumption of the bulk enrolment and sit idle in the DTx until the patient starts to make use of it.
+```mermaid
+  sequenceDiagram
+    actor Patient
+    NHS->>DTx: Bulk Patient Enrolment (NHS Number, Names, DoB, Email Address, other required fields)
+    NHS->>DTx:
+    NHS->>DTx:
+    loop For each patient
+      DTx->>DTx: Validation and Creation of Patient Account
+      DTx->>NHS: Acknowledge Enrolment and Account Creation (MI)
+      NHS->>Patient: Notification of Enrolment
+      DTx-->>Patient: Welcome Email / Onboarding Instruction
+    end
+```
+
+## Enrolment (NHS Instigated - Bulk Patient - Deferred Account Creation)
+
+This diagram shows the high level sequence of events and communication involved in enroling a patient on a DTx.  The patient account is only created within the DTx at the time the patient first attempts to make use of it. Auth Handoff would be by the means described in the App Launch sequnces below
+```mermaid
+  sequenceDiagram
+    actor Patient
+    NHS->>Patient: Notification of Enrolment
+    Patient->>NHS: Access DTx
+    NHS->>DTx: Patient Enrolment (NHS Number, Names, DoB, Email Address, other required fields)
+    DTx->>DTx: Validation and Creation of Patient Account
+    DTx->>NHS: Acknowledge Enrolment and Account Creation (MI)
+    rect rgb(180,180,228)
+      DTx-->>Patient: Auth Handoff
+      Patient-->>NHS: Auth Handoff
+      NHS-->>Patient: Auth Handoff
+      Patient-->>DTx: Auth Handoff
+    end
+    DTx->>Patient: Session and App Content
+    DTx-->>Patient: Welcome Email / Onboarding Instruction
+    
 ```
 
 ## DTx App Launch - Pre-installed
