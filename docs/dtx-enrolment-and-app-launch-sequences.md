@@ -40,10 +40,10 @@ This diagram shows the high level sequence of events and communication involved 
     DTx->>DTx: Validation and Creation of Patient Account
     DTx->>NHS: Acknowledge Enrolment and Account Creation (MI)
     rect rgb(180,180,228)
-      DTx-->>Patient: Auth Handoff
-      Patient-->>NHS: Auth Handoff
-      NHS-->>Patient: Auth Handoff
-      Patient-->>DTx: Auth Handoff
+      DTx-->>Patient: Auth Handoff Request
+      Patient-->>NHS: Auth Handoff Request
+      NHS-->>Patient: Auth Handoff Response
+      Patient-->>DTx: Auth Handoff Response
     end
     DTx->>Patient: Session and App Content
     DTx-->>Patient: Welcome Email / Onboarding Instruction
@@ -56,22 +56,27 @@ This is the sequence for when a patient already has the DTx app installed and th
 ```mermaid
   sequenceDiagram
   actor Patient
-    Patient ->> NHS: Open NHS App / Login
-    NHS ->> Patient: Session Tokens and App Content (Universal Links to relevant DTx)
-    Patient->>DTx: DTx Universal Link requesting OAuth Start
-    DTx->>DTx: OAuth 2 Start Authorisation Request
-    Note right of DTx: Example<br/> HTTP Request<br/> GET https://dtx-authorisation-service-api/nhs-app-login <br/><br/>HTTP Response <br/>302 Found<br/> Location: https://nhs-app-universal-link/authorize?<br/>response_type=code&<br/>client_id=<clientId>&<br/>redirect_uri=https://dtx-universal-link/redirect&<br/>scope=email openid profile&<br/>state=<state as per spec>
-    DTx->>Patient: NHS App Universal Link with OAuth authorization request
-    Patient->>NHS: NHS App Universal Link with OAuth authorization request
-    NHS->>Patient: OAuth Authentication Flow
-    Note right of Patient: User will already be authenticated in NHS App so this should be largely a no-op
-    Patient->>NHS: OAuth Authentication Flow
-    NHS->>NHS: Generate DTx Universal Link with OAuth Exchange Code
-    NHS->>Patient: DTx Universal Link with OAuth Exchange Code
-    Note right of NHS: Example<br/> https://dtx-universal-link/exchange?<br/>code=<exchange-code>&<br/>state=<state as per auth request>
+    Patient ->> NHS App: Open NHS App / Login
+    NHS App ->> NHS DTx App: Request DTx List "Connect Apps"
+    NHS DTx App ->> NHS App: Links for "Connect Apps"
+    NHS App ->> Patient: Session Tokens and App Content (Links to relevant DTx)
+    Patient->>NHS DTx App: Clink link to DTx 
+    NHS DTx App ->> NHS App: Request SSO JWT
+    NHS App ->> NHS DTx App: SSO JWT - asserted_login_identity
+    NHS DTx App ->> Patient: DTx Universal Link with asserted_login_identity
+    Patient ->> DTx: Open DTx with asserted_login_identity parameter
+    DTx->>DTx: OAuth 2 Start Authorisation Request - generate redirect URL including asserted_login_identity
+    Note right of DTx: Example<br/> HTTP Request<br/> GET https://dtx-authorisation-service-api/nhs-login/redirectWithIdentity?asserted_login_identity=<SSO JWT> <br/><br/>HTTP Response <br/>302 Found<br/> Location: https://nhs-app-universal-link/authorize?<br/>response_type=code&<br/>client_id=<clientId>&<br/>redirect_uri=https://dtx-universal-link/redirect&<br/>scope=email openid profile&<br/>state=<state as per spec>&<br/>asserted_login_identity=<SSO JWT>&<br/>prompt="none"|blank&<br/>vtr=%5B%22<VTR/VOT VALUE>%22%5D
+    DTx->>Patient: NHS App Universal Link with additional asserted_login_identity parameter, vtr parameter and prompt parameter
+    Patient->>NHS App: NHS App Universal Link with asserted_login_identity parameter, vtr parameter and prompt parameter
+
+    NHS App->>NHS Login: Retrieve OAuth Exchange code based on asserted_login_identity
+    NHS Login->>Patient: Redirect with OAuth Exchange Code (to DTx Universal Link)
+    Note right of NHS App: Example<br/> https://dtx-universal-link/exchange?<br/>code=<exchange-code>&<br/>state=<state as per auth request>
     Patient->>DTx: DTx Universal Link with OAuth Exchange Code
-    DTx->>DTx: Exchange OAuth code for Session Tokens, checking state matches authorisation request
-    DTx->>Patient: Session Tokens and App Content
+    DTx->>NHS Login: Exchange OAuth code for Session Tokens (checking state matches authorisation request)
+    NHS Login->>DTx: Session Tokens
+    DTx->>Patient: Redirect to Landing page with Session Tokens and App Content
 ```
 
 ## DTx App Launch - SSO through Installation
@@ -92,10 +97,12 @@ It relies on a custom app page, which should theoretically be able to launch an 
     NHS->>Patient: OAuth Authentication Flow
     Note right of Patient: User will already be authenticated in NHS App so this should be largely a no-op
     Patient->>NHS: OAuth Authentication Flow
-    NHS->>NHS: Generate DTx Universal Link with OAuth Exchange Code
-    NHS->>Patient: DTx Universal Link with OAuth Exchange Code
-    Note right of NHS: Example<br/> https://dtx-universal-link/exchange?<br/>code=<exchange-code>&<br/>state=<state as per auth request>
+    NHS Login->>NHS App: Redirect with OAuth Exchange Code (to DTx Universal Link)
+    Note right of NHS App: Example<br/> https://dtx-universal-link/exchange?<br/>code=<exchange-code>&<br/>state=<state as per auth request>
+    NHS App->>Patient: DTx Universal Link with OAuth Exchange Code
     Patient->>DTx: DTx Universal Link with OAuth Exchange Code
-    DTx->>DTx: Exchange OAuth code for Session Tokens, checking state matches authorisation request
+    DTx->>nhs-dtx: Exchange OAuth code for Session Tokens (checking state matches authorisation request)
+    nhs-dtx->>nhs-dtx: Validate code with NHS Login, mint Session Tokens
+    nhs-dtx->>DTx: Session Tokens
     DTx->>Patient: Session Tokens and App Content
 ```
